@@ -1,2 +1,2 @@
 # Atomic-Scale Dynamics of Supported Platinum Nanoparticles
-Deep-Potential model, data sets for training and test, trajectories and codes for analyses.
+LAMMPS input file for Deep-Potential molecular dynamics, corresponding trajectories and codes for analyses.
