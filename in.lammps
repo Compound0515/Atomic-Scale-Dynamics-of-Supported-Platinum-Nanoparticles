@@ -1,0 +1,91 @@
+# template input file for Pt-NPs dynamics
+plugin           load libdeepmd_lmp.so
+
+# == SETUP ==
+log              total.log append
+timer            timeout 432000
+atom_style       atomic
+units            metal
+dimension        3
+boundary         p p p
+
+# == DATA ==
+read_data        Pt-201.data
+
+# == GROUP DEFINITION ==
+group            TiO type 1 2
+group            Pt type 3
+group            fixed id 1:288
+group            mobile subtract all fixed
+
+# == INTERACTIONS ==
+pair_style       deepmd compressed_model.pb
+pair_coeff       * * O Ti Pt
+timestep         0.001
+
+# == COMPUTES DEFINITION ==
+compute          temp_mobile mobile temp
+compute          pe_all all pe
+
+# == VARIABLES DEFIINITION ==
+variable         time equal step*0.001
+variable         pe_total equal c_pe_all
+variable         temp_mobile equal c_temp_mobile
+
+# == MINIMIZATION ==
+minimize         1e-12 1e-12 1000 1000
+
+# == CONSTRAINTS ==
+fix              fix_fixed fixed setforce 0.0 0.0 0.0
+
+# == INITIALIZATION ==
+velocity         mobile create 600 111 dist gaussian
+
+# == NVT PRODUCTION ==
+fix              fix_nvt mobile nvt temp 600 600 0.1
+
+# == OUTPUT ==
+thermo           10
+thermo_style     custom step time c_temp_mobile ke pe etotal enthalpy
+thermo_modify    flush yes format float %23.16g
+dump             dump_init all xyz 1000 traj-picosec.xyz
+dump_modify      dump_init sort id element O Ti Pt
+fix              print_data all print 10 "${time} ${temp_mobile} ${pe_total}" file info.dat title "# time(ps) temp_mobile(K) pe_total(eV)" screen no
+
+# == RUN: loop over 0.5 ns segments and write separate trajectory & data files ==
+variable         total_steps equal 5000000
+variable         seg_steps equal 500000
+variable         nseg equal ${total_steps}/${seg_steps}
+variable         seg loop ${nseg}
+label            seg_loop
+
+variable         seg_idx equal ${seg}
+variable         seg_ns equal ${seg_idx}*0.5
+variable         trajname string traj-${seg_ns}ns.xyz
+variable         pttraj string pt-${seg_ns}ns.dump
+variable         tiotraj string tio-${seg_ns}ns.dump
+variable         velname string vel-${seg_ns}ns.dump
+variable         dataname string data-${seg_ns}ns.data
+
+dump             segdump_traj all xyz 10 ${trajname}
+dump_modify      segdump_traj sort id element O Ti Pt
+dump             segdump_pt Pt custom 10 ${pttraj} id type x y z
+dump_modify      segdump_pt sort id
+dump             segdump_vel Pt custom 10 ${velname} id type vx vy vz
+dump_modify      segdump_vel sort id
+
+run              ${seg_steps}
+
+undump           segdump_traj
+undump           segdump_pt
+undump           segdump_vel
+write_data       ${dataname}
+write_restart    restart-${seg_ns}ns.restart
+next             seg
+jump             SELF seg_loop
+
+unfix            fix_nvt
+unfix            fix_fixed
+unfix            print_data
+write_data       final.data
+write_restart    final.restart
